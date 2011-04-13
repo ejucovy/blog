@@ -1,0 +1,136 @@
+---
+layout: post
+title: Using SQLAlchemy with Django, alongside Django ORM
+---
+
+<h3>Why</h3>
+<p>
+N+1 databases: one local and writable, N remote and read-only.  The
+remote database has a bunch of tables with relational data.  For the
+project, I needed to query the remote database in various ways, and
+then save some stuff in a local database, and do some things to the
+stuff I saved.
+</p>
+<p>
+I defined the local database's models with the Django ORM.  (Mostly
+they are trivial, JSON blobs of stuff pulled from the remote
+databases, to be used for short-term operations.)  I defined the
+remote databases' models with SQLAlchemy.  It was easy to write
+whatever queries I wanted, on whatever data I wanted, that way.  And
+it made the actual separation of the local and remote data a lot more apparent
+as I worked with the code: if I'm working on local data, I'm using
+Django models; if I'm working with remote data, I'm using SQLAlchemy.
+It felt cleaner that way.
+</p>
+<h3>How</h3>
+<p>
+SQLAlchemy models defined in a <code>project/remote.py</code> file.
+</p>
+<p>
+Connection settings for the various remote databases defined
+in <code>settings.py</code> in a dict:
+</p>
+
+{% highlight python %}
+## settings.py
+SQLALCHEMY_DB_CONNECTIONS = {
+  'db1': "mysql://foo:bar@baz.com/db1",
+  'db2': "mysql://foo:bar@baz.com/db2",
+}      
+{% endhighlight %}
+
+<p>
+In middleware, I attach a SQLAlchemy session object to each request.
+The session object, which is used to query a database through
+SQLAlchemy, can then be used in all the Django views:
+</p>
+
+{% highlight python %}
+## app/views.py
+from app import remote
+def index(request):
+    """
+    Show a list of all available entries from the remote db.
+    """
+    entries = request.sqla_session.query(remote.EntryModel).all()
+    return {
+        'entries': entries
+        }
+{% endhighlight %}
+
+<p>
+One extra step: I wanted to select the database by traversal &mdash;
+the first path segment in the URL would be one of the keys in
+the <code>SQLALCHEMY_DB_CONNECTIONS</code> dict.  To do this, I
+configured the root <code>urls.py</code> with a <code>db_name</code>
+argument:
+</p>
+
+{% highlight python %}
+## urls.py
+urlpatterns = patterns(
+    '',
+    (r'^(?P<db_name>\w+)/', include('app.urls')),
+)
+{% endhighlight %}
+
+{% highlight python %}
+## app/middleware.py
+from django.conf import settings
+from django.http import HttpResponseNotFound
+import re
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+class SQLAlchemySessionMiddleware(object):
+    """
+    Middleware component that adds an attribute `sqla_session` to the `request`
+    object. The session is bound to a database which is selected by URL traversal,
+    by finding (and deleting) the `db_name` from the kwargs about to be passed
+    in to the view.
+
+    The connection string is found by settings.SQLALCHEMY_DB_CONNECTIONS[db_name]
+    which should be excluded from version control since it will include sensitive
+    information like passwords for all available databases.
+    """
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        request.sqla_session = None
+        request.db_name = None
+        if 'db_name' not in view_kwargs:
+            return None
+
+        db_name = view_kwargs.pop('db_name')
+        try:
+            connection_string = settings.SQLALCHEMY_DB_CONNECTIONS[db_name]
+        except KeyError:
+            return HttpResponseNotFound("Database '%s' is not configured." % db_name)
+
+        engine = create_engine(connection_string)
+        Session = sessionmaker(bind=engine)
+
+        request.sqla_session = Session()
+        request.db_name = db_name
+
+        return None
+{% endhighlight %}
+
+<p>
+Before a request reaches its target view, the middleware looks
+for <code>db_name</code> in the view's kwargs.  If it's present, it
+attaches a session to the request, and removes <code>db_name</code>
+from <code>view_kwargs</code>, so that the app's view signatures can
+ignore the <code>db_name</code> path segment completely.  That way the
+same views can be reused with a different middleware that decides on a
+remote database in some other way.
+</p>
+
+<p>
+Probably this isn't the most efficient thing in the world, but it's
+clean and it worked.  Since I was talking to read-only databases
+through SQLAlchemy, I didn't really have to worry about managing
+transactions or anything complicated.  And, conveniently, the
+SQLAlchemy interfaces for results are similar enough to Django's that
+pretty much everything I had to do with them in templates (including
+wrapping them in a <code>Paginator</code>) just worked.
+</p>
