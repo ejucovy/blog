@@ -3,4 +3,18 @@ layout: post
 title: This is a Blog
 ---
 
-This is a blog.  Hello.
+<p>This is a blog.  Hello.</p>
+
+<p>Here's how to view it locally (i.e. preview what it will look like after pushing to github) with proper syntax highlighting:</p>
+
+{% highlight bash %}
+sudo apt-get install rubygems1.8 ruby1.8-dev
+sudo gem install jekyll
+sudo apt-get install python-pygments
+cd /tmp
+git clone git://github.com/ejucovy/blog.git -b gh-pages
+/var/lib/gems/1.8/bin/jekyll --pygments
+ln -s /tmp/blog/_site /var/www/nginx-default/blog
+{% endhighlight %}
+
+The <code>--pygments</code> flag is off by default, which makes <code>{{ "{% highlight " }} %}</code> blocks behave weirdly.
