@@ -1,0 +1,45 @@
+---
+layout: post
+title: Notes on Git Submodules
+---
+
+<p>
+  <a href="https://github.com/schuyler1d">Sky</a> introduced me to git
+  submodules.  Now I'm using them for my own project.  The basics are
+  not intuitive: 
+</p>
+
+<ul>
+  <li>
+    If you are cloning a project with git submodules, you should use <code>git clone --recursive</code> or <code>git clone; git submodule init</code> &mdash; I think these are equivalent.  If you just do a normal <code>git clone</code> the project's submodules won't be cloned.
+  </li>
+  <li>
+    Submodules are always pinned, there's no such thing as an unpinned
+    submodule.  If you make changes in the submodule, you need
+    to <code>git add path/to/submodule; git commit</code> to update
+    the pin in the super-project.
+  </li>
+</ul>
+
+<p>
+  My submodule is in a deeply nested path, so when I want to commit
+  changes to the submodule, it's annoying to <code>cd
+  deeply/nested/path/to/submodule; git commit -a -m "making my
+  changes to the submodule"; git push; cd ../../../../..; git add
+  deeply/nested/path/to/submodule; git commit -m "updating submodule
+  ref"</code> all the time.  I think this will work as a slightly less
+  inconvenient version:
+</p>
+
+{% highlight bash %}
+git submodule foreach git commit -a -m "making my changes to the submodule"
+git submodule foreach git push
+git add deeply/nested/path/to/submodule
+git commit -m "Updating submodule ref"
+git push
+{% endhighlight %}
+
+<p>
+That only works with one submodule of course, or else changes in every submodule
+will get simultaneously committed with the same commit message.
+</p>
