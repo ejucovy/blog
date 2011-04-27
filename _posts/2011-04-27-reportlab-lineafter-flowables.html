@@ -1,0 +1,30 @@
+---
+layout: post
+title: Adding a Horizontal Line Below Reportlab Flowables
+---
+
+Use a custom Frame subclass:
+
+{% highlight python %}
+class FancyFrame(Frame):
+
+    def add(self, flowable, canvas, trySplit=0):
+        result = Frame.add(self, flowable, canvas, trySplit=trySplit)
+        if result == 0:
+            return result
+
+        # Slight hack: we're assuming that trySplit==0 iff this flowable
+        # is an already-split portion of another flowable. So we don't want
+        # to draw a line below it, since it's not the end of an entry.
+        # This assumes that this frame's parent doctemplate allowSplitting
+        # has not been changed from the default.
+        if trySplit == 0:
+            return result
+
+        canvas.saveState()
+        canvas.setStrokeColor(colors.gray)
+        fudge = flowable.getSpaceAfter() / 2.0
+        canvas.line(self._x, self._y + fudge, self._x + self.width, self._y + fudge)
+        canvas.restoreState()
+        return result
+{% endhighlight %}
