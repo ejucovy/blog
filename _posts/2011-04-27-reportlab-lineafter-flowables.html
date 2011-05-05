@@ -3,9 +3,27 @@ layout: post
 title: Adding a Horizontal Line Below Reportlab Flowables
 ---
 
-Use a custom Frame subclass:
+When you use a `reportlab.platypus.Table` layout, you can insert
+horizontal lines wherever you want using the `TableStyle` LINEBELOW
+command:
 
 {% highlight python %}
+style = TableStyle([
+     ("LINEBELOW", (0,0), (-1,-1), 1, colors.black),
+   ])
+t = Table(data)
+t.setStyle(style)
+{% endhighlight %}
+
+But what if you're not using a Table layout, and still want horizontal
+lines between your flowables?
+
+Use a custom Frame subclass to draw a line directly on the page after
+each flowable has been drawn successfully:
+
+{% highlight python %}
+from reportlab.platypus import Frame
+from reportlab.lib import colors
 class FancyFrame(Frame):
 
     def add(self, flowable, canvas, trySplit=0):
@@ -22,9 +40,31 @@ class FancyFrame(Frame):
             return result
 
         canvas.saveState()
-        canvas.setStrokeColor(colors.gray)
+        canvas.setStrokeColor(colors.black)
         fudge = flowable.getSpaceAfter() / 2.0
         canvas.line(self._x, self._y + fudge, self._x + self.width, self._y + fudge)
         canvas.restoreState()
         return result
+
+## For example
+from reportlab.platypus import BaseDocTemplate, PageTemplate
+class ThreeColumnTemplate(BaseDocTemplate):
+    def __init__(self, *args, **kw):
+        BaseDocTemplate.__init__(self, *args, **kw)
+
+        doc = self
+        columns = []
+        interFrameMargin = 0.2*inch
+        frameWidth = doc.width / 3 - interFrameMargin
+        columns.append(FancyFrame(doc.leftMargin, doc.bottomMargin, frameWidth, doc.height))
+        columns.append(FancyFrame(doc.leftMargin + frameWidth + interFrameMargin, 
+                             doc.bottomMargin, frameWidth, doc.height))
+        columns.append(FancyFrame(doc.leftMargin + 2 * frameWidth + 2 * interFrameMargin,
+                             doc.bottomMargin, frameWidth, doc.height))
+        
+        #doc.showBoundary = True
+        doc.addPageTemplates([
+                PageTemplate(id='ThreeColumn', frames=columns),
+                ])
+
 {% endhighlight %}
