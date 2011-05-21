@@ -2,11 +2,11 @@
 layout: post
 title: Adding a Horizontal Line Below Reportlab Flowables
 ---
-
+<p>
 When you use a `reportlab.platypus.Table` layout, you can insert
 horizontal lines wherever you want using the `TableStyle` LINEBELOW
 command:
-
+</p>
 {% highlight python %}
 style = TableStyle([
      ("LINEBELOW", (0,0), (-1,-1), 1, colors.black),
@@ -14,13 +14,14 @@ style = TableStyle([
 t = Table(data)
 t.setStyle(style)
 {% endhighlight %}
-
+<p>
 But what if you're not using a Table layout, and still want horizontal
 lines between your flowables?
-
+</p>
+<p>
 Use a custom Frame subclass to draw a line directly on the page after
 each flowable has been drawn successfully:
-
+</p>
 {% highlight python %}
 from reportlab.platypus import Frame
 from reportlab.lib import colors
