@@ -1,0 +1,44 @@
+---
+layout: post
+title: Using Generators with Reportlab Platypus
+---
+
+Reportlab's `platypus.doctemplate` module is really nice, but I found
+it weird that you have to pass a pre-built list of flowables to the
+`build` command.  If you're building PDFs from a dataset, this means
+you have to iterate over your dataset once to build the list of
+flowables from your dataset; and then pass the list of flowables to
+ReportLab, to iterate over it again.  That extra iteration seems
+wasteful, and also forces you to hold the whole list of flowables in
+memory before you start rendering the PDF.  
+
+For large datasets, it might be nice to pass a generator instead of a
+list.
+
+I have a working proof of concept on a branch here:
+https://github.com/ejucovy/reportlab/tree/generators
+
+A side effect of the changes on this branch: you can also build a PDF
+in multiple steps, because the code now lets you add one flowable at a
+time to the document.  So on my branch, you can do something like
+this::
+
+{% highlight python %}
+doc = reportlab.platypus.doctemplate("file.pdf")
+doc.startBuild()
+num_handled_flowables = 0
+for item in generator_that_yields_flowables():
+  num_handled_flowables = doc.buildFlowable(item, num_handled_flowables)
+for item in another_flowable_generator():
+  num_handled_flowables = doc.buildFlowable(item, num_handled_flowables)
+doc.endBuild()
+{% endhighlight %}
+
+Or you can just pass a generator to the regular `doc.build` like so::
+
+{% highlight python %}
+doc = reportlab.platypus.doctemplate("file.pdf")
+doc.build(generator_that_yields_flowables())
+{% endhighlight %}
+
+I dunno if this actually saves any significant time or space, though.
