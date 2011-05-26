@@ -8,9 +8,9 @@ framework defines its own file object, whose interface is a superset
 of the standard Python file object's.
 </p>
 <p>
-The object is defined in ``django.core.files.base.File``.  You need to
-use it when working with `FileField`s.  Objects that you retrieve from
-`request.FILES` are instances of this class, so the details can often
+The object is defined in <code>django.core.files.base.File</code>.  You need to
+use it when working with <code>FileField</code>s.  Objects that you retrieve from
+<code>request.FILES</code> are instances of this class, so the details can often
 be ignored.  But if you're not getting your files from user uploads,
 the details start to matter.
 </p>
@@ -30,7 +30,7 @@ AttributeError: 'file' object has no attribute 'chunks'
 {% endhighlight %}
 
 <p>
-Instead, you have to wrap the file in a `django.core.files.File` like so::
+Instead, you have to wrap the file in a <code>django.core.files.File</code> like so::
 </p>
 
 {% highlight python %}
@@ -67,7 +67,7 @@ AttributeError: Unable to determine the file's size.
 <p>
 The Django File object wants to know its size, and refuses to be
 constructed if it can't determine its size.  One of the things it
-looks for to determine its size is a `size` attribute on the
+looks for to determine its size is a <code>size</code> attribute on the
 underlying file object.  So we can ask the zipfile for the
 uncompressed size of the file we want, and set that attribute before
 constructing a Django File::
