@@ -1,0 +1,92 @@
+---
+layout: post
+title: Notes on Django File Objects
+---
+<p>
+Working with files in Django is a little awkward, because the
+framework defines its own file object, whose interface is a superset
+of the standard Python file object's.
+</p>
+<p>
+The object is defined in `django.core.files.base.File`.  You need to
+use it when working with `FileField`s.  Objects that you retrieve from
+`request.FILES` are instances of this class, so the details can often
+be ignored.  But if you're not getting your files from user uploads,
+the details start to matter.
+</p>
+<p>
+You can't just pass a standard Python file to a FileField::
+</p>
+{% highlight python %}
+>>> class MyModel(models.Model):
+...    file = models.FileField(upload_to="foo")
+
+>>> some_file = open("some_file.txt")
+>>> my_object = MyModel()
+>>> my_object.file.save("some_file.txt", some_file)
+Traceback (most recent call last):
+...
+AttributeError: 'file' object has no attribute 'chunks'
+{% endhighlight %}
+
+<p>
+Instead, you have to wrap the file in a `django.core.files.File` like so::
+</p>
+
+{% highlight python %}
+>>> some_file = open("some_file.txt")
+>>> my_object = MyModel()
+
+>>> from django.core.files import File
+>>> some_file = File(some_file)
+>>> my_object.file.save("some_file.txt", some_file)
+
+>>> my_object.save()
+{% endhighlight %}
+
+<p>
+In Python, you can also work with files directly from a zip archive,
+without extracting them.  But if you try to pass a file object to
+Django directly from a zip archive using the same approach as above,
+there's another problem::
+</p>
+
+{% highlight python %}
+>>> import zipfile
+>>> my_zip = zipfile.ZipFile("some_archive.zip")
+>>> my_object = MyModel()
+
+>>> some_file = my_zip.open("path/to/archived/file.txt")
+>>> from django.core.files import File
+>>> some_file = File(some_file)
+Traceback (most recent call last):
+...
+AttributeError: Unable to determine the file's size.
+{% endhighlight %}
+
+<p>
+The Django File object wants to know its size, and refuses to be
+constructed if it can't determine its size.  One of the things it
+looks for to determine its size is a `size` attribute on the
+underlying file object.  So we can ask the zipfile for the
+uncompressed size of the file we want, and set that attribute before
+constructing a Django File::
+</p>
+
+{% highlight python %}
+>>> import zipfile
+>>> my_zip = zipfile.ZipFile("some_archive.zip")
+>>> my_object = MyModel()
+
+>>> some_file = my_zip.open("path/to/archived/file.txt")
+>>> from django.core.files import File
+>>> uncompressed_size = my_zip.getinfo("path/to/archived/file.txt").file_size
+>>> some_file.size = uncompressed_size
+
+>>> some_file = File(some_file)
+>>> my_object.file.save(some_file)
+>>> my_object.save()
+{% endhighlight %}
+<p>
+Now everything works without error.
+</p>
