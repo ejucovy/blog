@@ -1,0 +1,79 @@
+---
+layout: post
+title: Logging with Reportlab Platypus
+---
+<p>
+If you're building a PDF from a platypus doctemplate with a lot of
+flowables, the <code>doc.build(elements)</code> call can take a while.
+You might want to put some logging calls in there to see how far along
+it is.
+</p>
+<p>
+It's easy to do this with Reportlab, though it seems to be
+undocumented in the main Reportlab docs.  You can set a "progress
+callback" on your doctemplate::
+</p>
+{% highlight python %}
+from reportlab.platypus import SimpleDocTemplate
+doc = SimpleDocTemplate("fleem.pdf")
+doc.setProgressCallBack(logging_function)  # note the TripleCamelCase!
+doc.build(lots_of_elements)
+{% endhighlight %}
+
+<p>
+Your progress callback will be called with arguments (type, value)
+periodically during the build.  The "type" argument depends on what's
+going on at the moment, and the "value" argument has a different
+meaning for each type.  Here's the different values I see used 
+in <code>reportlab/platypus/doctemplate.py</code>:
+</p>
+
+<ul>
+<li>
+  ("STARTED", 0) when <code>doc.build</code> begins
+</li>
+<li>
+  ("SIZE_EST", total_number_of_flowables) right after "STARTED", this gives
+  you an approximate number of flowables that will be written to the
+  PDF (it's only approximate because reportlab might internally add
+  more, or you might filter some out)
+</li>
+<li>
+  ("PROGRESS", number_of_flowables_handled_up_to_now) happens every
+  time a flowable is processed
+<li>
+  ("PAGE", page_number) when starting a new page in the PDF
+</li>
+<li>
+  ("FINISHED", 0) when the document is done building
+</li>
+<li>
+  ("PASS", current_pass_number) on each pass through the document in a
+  multibuild
+</li>
+</ul>
+
+So for example here's a simple callback that just prints how many
+flowables have been handled, out of the estimated total::
+
+{% highlight python %}
+class ProgressMeter(object):
+    def __init__(self):
+        self.size_est = None
+    def __call__(self, type, value):
+        if type == "SIZE_EST":
+            self.size_est = value
+        elif type == "PROGRESS":
+            print "%s flowables processed (out of %s or so)" % (
+                value, self.size_est)
+
+doc = SimpleDocTemplate("fleem.pdf")
+callback = ProgressMeter()
+doc.setProgressCallBack(callback)
+doc.build(lots_of_flowables)
+{% endhighlight %}
+
+<p>
+Note that you have to use something stateful like a class instance if
+you want to hold onto the size estimate during later progress ticks.
+</p>
