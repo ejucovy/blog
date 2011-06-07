@@ -1,0 +1,149 @@
+---
+layout: post
+title: Using ConfigParser in Django Model Instances
+categories:
+ - django
+---
+
+<p>Suppose you have a Django model with a lot of persistent,
+  configurable policy settings -- e.g. "is its content world-viewable
+  or not", "what's the preferred frontend editor for this object",
+  "should it be displayed with a header or not" and so on.</p>
+
+<p>These sorts of policy settings have a few important characteristics
+  in common:</p>
+<ul>
+  <li>Their value affects logic that's run on a single instance at a
+    time.  So you probably don't need to run highly optimized relational
+    queries on them &mdash; certainly not in your first iteration.
+    Perhaps you'll eventually find you need optimized queries based on
+    some of these fields, but you don't need to from the start.</li>
+  <li>The possible values for a given setting might change over time,
+    and might change a lot during initial development.</li>
+  <li>The possible <em>settings</em> might change over time &mdash;
+    new settings might be needed a long way down the road.</li>
+  <li>Other than that, they don't have a lot in common with each other.</li>
+</ul>
+
+<p>Putting each of these sorts of settings in a dedicated database
+  column can be more trouble than it's worth.  You'll be baking
+  highly fluid assumptions into the structure of your database, when
+  these are just the type of assumptions that are suited to iterative,
+  flexible Python code.</p>
+
+<p>Instead, I like to put all these settings into a single text blob
+  &mdash; one column per model instance, instead of a separate column
+  for each setting.  By storing the settings as if they were a Python
+  INI file, you can read and write them using the stdlib's
+  ConfigParser, and don't have to worry about any data migrations as
+  the settings change.</p>
+
+<p>The only slightly tricky thing is that ConfigParser can't act
+  directly on strings &mdash; it only accepts file-like objects.  So
+  you'll have to use a bit of indirection: wrap your model field in a
+  StringIO whenever you're reading and writing it.  Putting this
+  indirection into a single helper method on the model encapsulates those
+  implementation details.</p>
+
+<p>Here's an example:</p>
+
+{% highlight python %}
+## models.py
+from ConfigParser import RawConfigParser
+from ConfigParser import NoOptionError, NoSectionError
+from StringIO import StringIO
+
+class Configuration(models.Model):
+    name = models.TextField()
+    data = models.TextField()
+
+    @models.permalink
+    def get_absolute_url(self):
+        return ('view-configuration', [str(self.pk)])
+
+    def __unicode__(self):
+        return str(self.name or self.pk)
+
+    def set_options(self, kwargs):
+        config = RawConfigParser()
+        fp = StringIO(self.data)
+        config.readfp(fp)
+
+        for key, val in kwargs.items():
+            if key == "filter_by":
+                if val is None:
+                    config.remove_option("options", "filter_by")
+                else:
+                    config.set("options", key, " ".join(val))
+            else:
+                config.set("options", key, val)
+
+        fp = StringIO()
+        config.write(fp)
+        fp.seek(0)
+        self.data = fp.read()
+        self.save()
+
+    def get_option(self, key, default=NoDefault, asbool=False):
+        config = RawConfigParser()
+        fp = StringIO(self.data)
+
+        config.readfp(fp)
+        try:
+            value = config.get("options", key)
+        except (NoOptionError, NoSectionError):
+            if default is NoDefault:
+                raise
+            return default
+
+        if not asbool:
+            return value.strip()
+
+        value = value.lower()
+        if value in ("1", "true", "t", "yes", "y", "on"):
+            return True
+        elif value in ("0", "false", "f", "no", "n", "off"):
+            return False
+        else:
+            raise TypeError("Cannot convert to bool: %s" % value)
+
+    def filter_by(self):
+        filters = self.get_option("filter_by", "")
+        return filters.split()
+        
+    def order_by(self):
+        return self.get_option("order_by", "none").lower()
+
+    def group_by(self):
+        return self.get_option("group_by", "none").lower()
+
+    def header(self):
+        return self.get_option("header", None)
+
+    def footer(self):
+        return self.get_option("footer", None)
+
+    def number_entries(self):
+        return self.get_option("entrynumbers", default=False, asbool=True)
+
+    def number_pages(self):
+        return self.get_option("pagenumbers", default=False, asbool=True)
+
+    def template(self):
+        return self.get_option("template", "threecolumn_withcomments")
+{% endhighlight %}
+
+<p>Note all the glorious inelegance!  Each known setting gets its own
+  accessor method on the model, which hides the implementation details
+  and documents that setting's expected type, default value, and so
+  on.  That makes it easy to "migrate" data as settings change; just
+  change the code &mdash; add settings, change default values, provide
+  extra error handlers that return the proper defaults or implicitly
+  migrate bad data, whatever.</p>
+
+<p>If you do ultimately find that some of these settings would be
+  better off in their own database columns, the needed changes are
+  localized: just replace the accessor method with a new model field,
+  and handle its mutation either in the calling code or in the
+  set_options method.
+</p>
