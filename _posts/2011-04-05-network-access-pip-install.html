@@ -1,0 +1,39 @@
+---
+layout: post
+title: Using SQLAlchemy with Django, alongside Django ORM
+categories:
+ - pip
+---
+
+<p>Anders has written <a href="http://ccnmtl.columbia.edu/compiled/sysadmin/deploying_django_and_deploying.html">several</a> <a href="http://thraxil.org/users/anders/posts/2009/06/12/Django-Deployment-with-virtualenv-and-pip/">times</a> about our deployment strategy for Django apps at <span class="caps">CCNMTL. </span> Aside from containment of each project with <a href="http://www.virtualenv.org/">virtualenv</a>, we also try to make sure that deployments never depend on anything external, and can be done without access to the wider Internet.  We do this by an aggressive form of version pinning: in each project's repository, we check in source tarballs of all the project's dependencies, including Django itself.  We then have a <a href="http://www.pip-installer.org/">pip</a> requirements file that points to each of these local files in order.  (<a href="https://github.com/ccnmtl/smart_sa/tree/master/requirements">Here's an example</a>, and <a href="https://github.com/ccnmtl/smart_sa/blob/master/bootstrap.py">the bootstrap script that uses it</a>.)</p>
+
+<p>There are two benefits to this approach.  First, it removes our deployments' dependencies on external web services, like <a href="http://pypi.python.org">PyPI</a>, being online.  Second, it ensures that we know exactly what versions we're using of <b>all</b> the Python code in a project's deployment.  That makes deployments trivially repeatable, and gives us the ability to roll back a deployment to any earlier version -- so if a new deployment doesn't work properly for some reason, we can re-deploy the last tagged deployment and know that (barring system-level changes) it'll work exactly as expected.</p>
+
+<p>The other week, we made a new deployment to one of our Django projects, and the site stopped working.  It turned out that the wrong version of Django was installed somehow: the project was built on Django 1.0, but this broken deployment ended up with Django 1.2 instead.  And, oddly, rolling back to the previous deployment didn't fix the problem.</p>
+
+<p>This looked to me like an unpinned nested-dependency problem -- where, even though we've pinned down specific versions of all of our dependencies, one of those dependencies itself has a dependency which we haven't pinned down. If that nested dependency puts out a new release, our bootstrap script will start pulling in that new version, which might break our project in both old and new deployments.</p>
+
+<p>So I ran our bootstrap script, and searched its output for any packages being downloaded from the internet:</p>
+
+{% highlight shell %}
+ ./bootstrap.py | grep -i download
+{% endhighlight %}
+
+<p>Sure enough, two packages were being fetched from PyPI. And, as I suspected, a new release of one of those packages had just been made on the same day that our deployment broke.</p>
+<p>
+So, I fetched tarballs of both packages from PyPI (using the previous version of the one that just had a new release) and added them to the project's requirements. That solved the problem -- the project's deployment worked again.
+</p><p>
+I also wanted to make sure this would never happen again. After all, it turned out that this project's deployment wasn't as contained as we had thought -- its pinned dependencies had unpinned dependencies, meaning deployments weren't 100% repeatable, and we needed access to PyPI for the build to succeed.
+</p><p>
+Luckily pip has a flag that lets you set a URL other than http://pypi.python.org to fetch packages from. Setting this to a bogus URL was a simple way to ensure that installation would fail early and loudly, with a non-zero exit code, if we have any dependencies that aren't provided as source tarballs in the project checkout:
+</p>
+
+{% highlight shell %}
+ pip install PackageName --index-url=''
+{% endhighlight %}
+<p>
+With that option set, instead of fetching unpinned packages from the Internet, pip will fail with a message like <code>ValueError: unknown url type: ''/PackageName</code>.
+</p><p>
+<a href="https://github.com/ccnmtl/ccnmtldjango/commit/3a4420be2516cc890042fd1009372e2a7b0c253b">Here's</a> the actual change in our bootstrap script. With this change, our projects' deployments are fully self-contained and repeatable, and also self-guarding against programmer error: if we gain any new dependency and forget to provide local pinned source distributions of all of its dependencies, the build will fail immediately and noticeably, rather than potentially getting into production with unvetted versions of its dependencies pulled at deployment-time from the Internet.</p><p>
+(As for why the new release of this package resulted in an installation of Django 1.2 even though we told pip to install a local Django-1.0 source distribution, it turns out to be an apparent bug in pip involving a very specific combination of local source distributions, network download of unpinned requirements, and case-sensitive nested dependencies. I haven't managed to come up with a patch for the underlying issue, but I reported <a href="https://github.com/pypa/pip/issues/239">steps to reproduce the bug in pip</a>.)</p>
+
