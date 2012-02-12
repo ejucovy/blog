@@ -15,9 +15,9 @@ categories:
 
 <p>So I ran our bootstrap script, and searched its output for any packages being downloaded from the internet:</p>
 
-{% highlight shell %}
+<pre>
  ./bootstrap.py | grep -i download
-{% endhighlight %}
+</pre>
 
 <p>Sure enough, two packages were being fetched from PyPI. And, as I suspected, a new release of one of those packages had just been made on the same day that our deployment broke.</p>
 <p>
@@ -28,9 +28,10 @@ I also wanted to make sure this would never happen again. After all, it turned o
 Luckily pip has a flag that lets you set a URL other than http://pypi.python.org to fetch packages from. Setting this to a bogus URL was a simple way to ensure that installation would fail early and loudly, with a non-zero exit code, if we have any dependencies that aren't provided as source tarballs in the project checkout:
 </p>
 
-{% highlight shell %}
+<pre>
  pip install PackageName --index-url=''
-{% endhighlight %}
+</pre>
+
 <p>
 With that option set, instead of fetching unpinned packages from the Internet, pip will fail with a message like <code>ValueError: unknown url type: ''/PackageName</code>.
 </p><p>
